@@ -1,3 +1,3 @@
 [phases.setup]
 nixPkgs = ['...', 'libglvnd', 'glib', 'libxcb', 'libX11', 'libXrender', 'libXrandr', 'libXext']
-aptPkgs = ['libxcb1', 'libx11-6', 'libxrender1', 'libxrandr2', 'libxext6']
+aptPkgs = ['libxcb1', 'libxcb-xkb1', 'libx11-6', 'libxrender1', 'libxrandr2', 'libxext6']
