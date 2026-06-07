@@ -17,7 +17,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir opencv-python-headless
 
-COPY . .
+COPY ..
 
 # Run your app using your port configuration
 CMD ["python", "app.py"]
