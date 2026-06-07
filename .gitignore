@@ -15,3 +15,11 @@ venv/
 
 # Environment files
 .env
+.vercel
+*.pkl
+*.csv
+*.jpeg
+*.jpg
+*.png
+.vercel/
+.cache/

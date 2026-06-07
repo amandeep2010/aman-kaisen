@@ -14,12 +14,13 @@ const IMAGE_FIT_WIDTH = 600;          // target width in 3D world units
 const Z_JITTER = 8;                   // slight depth variation for assembled image
 const MIN_BRIGHTNESS = 0.35;          // boost dim pixels so they're visible with additive blending
 const FRAME_INTERVAL_MS = 100;
+const DEFAULT_REMOTE_WS_URL = 'wss://amandeep-kaisen.onrender.com';
 
 const IMAGE_MAP = {
-    infinite_void:     '/infinite_void.jpg',
-    mahoraga:          '/mahoraga.jpg',
+    infinite_void: '/infinite_void.jpg',
+    mahoraga: '/mahoraga.jpg',
     malevolent_shrine: '/malevolent_shrine.jpg',
-    hollow_purple:     '/hollow_purple.jpg',
+    hollow_purple: '/hollow_purple.jpg',
 };
 
 // ─────────────────────────────────────────────
@@ -31,12 +32,12 @@ let ws;
 let socket;
 
 let scatteredPositions = new Float32Array(NUM_PARTICLES * 3);
-let scatteredColors    = new Float32Array(NUM_PARTICLES * 3);
+let scatteredColors = new Float32Array(NUM_PARTICLES * 3);
 
 // { gestureName: { positions: Float32Array, colors: Float32Array } }
 const formations = {};
 
-let progressObj   = { val: 0 };
+let progressObj = { val: 0 };
 let targetGesture = 'neutral';
 let currentFormationKey = null;               // tracks which formation we are in / going to
 
@@ -69,7 +70,7 @@ function extractPixelData(imagePath) {
             let drawW = Math.round(Math.sqrt(targetPixels * aspect));
             let drawH = Math.round(drawW / aspect);
 
-            canvas.width  = drawW;
+            canvas.width = drawW;
             canvas.height = drawH;
 
             ctx.clearRect(0, 0, drawW, drawH);
@@ -126,15 +127,15 @@ function extractPixelData(imagePath) {
  */
 function buildFormationArrays({ pixels, width, height }) {
     const positions = new Float32Array(NUM_PARTICLES * 3);
-    const colors    = new Float32Array(NUM_PARTICLES * 3);
+    const colors = new Float32Array(NUM_PARTICLES * 3);
 
     // Scale factor: map pixel-space height to the exact vertical viewport height
     // at the camera's Z distance (500)
     const vFOV = (camera.fov * Math.PI) / 180;
     const visibleHeight = 2 * Math.tan(vFOV / 2) * Math.abs(camera.position.z);
-    
+
     const scale = visibleHeight / height;
-    const halfW = (width  * scale) / 2;
+    const halfW = (width * scale) / 2;
     const halfH = (height * scale) / 2;
 
     // Subsample or pad to exactly NUM_PARTICLES
@@ -153,23 +154,23 @@ function buildFormationArrays({ pixels, width, height }) {
         if (i < sampledPixels.length) {
             const p = sampledPixels[i];
             // Convert pixel coords to centered 3D coords (Y flipped)
-            positions[i3]     = p.x * scale - halfW;                           // X
+            positions[i3] = p.x * scale - halfW;                           // X
             positions[i3 + 1] = -(p.y * scale - halfH);                       // Y (flip)
             positions[i3 + 2] = (Math.random() - 0.5) * Z_JITTER;            // Z jitter
 
-            colors[i3]     = p.r;
+            colors[i3] = p.r;
             colors[i3 + 1] = p.g;
             colors[i3 + 2] = p.b;
         } else {
             // "Aura" particle — scattered behind the image with dim glow
-            const angle  = Math.random() * Math.PI * 2;
+            const angle = Math.random() * Math.PI * 2;
             const radius = IMAGE_FIT_WIDTH * 0.3 + Math.random() * IMAGE_FIT_WIDTH * 0.5;
-            positions[i3]     = Math.cos(angle) * radius;
+            positions[i3] = Math.cos(angle) * radius;
             positions[i3 + 1] = Math.sin(angle) * radius * (height / width);
             positions[i3 + 2] = -20 + (Math.random() - 0.5) * 40;
 
             // Dim version of image's average color (gives an ambient glow)
-            colors[i3]     = 0.15;
+            colors[i3] = 0.15;
             colors[i3 + 1] = 0.15;
             colors[i3 + 2] = 0.2;
         }
@@ -247,30 +248,30 @@ async function init() {
     // Geometry & initial scattered state
     geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(NUM_PARTICLES * 3);
-    const colors    = new Float32Array(NUM_PARTICLES * 3);
+    const colors = new Float32Array(NUM_PARTICLES * 3);
 
     for (let i = 0; i < NUM_PARTICLES; i++) {
         // Scattered positions
-        scatteredPositions[i * 3]     = (Math.random() - 0.5) * 2000;
+        scatteredPositions[i * 3] = (Math.random() - 0.5) * 2000;
         scatteredPositions[i * 3 + 1] = (Math.random() - 0.5) * 2000;
         scatteredPositions[i * 3 + 2] = (Math.random() - 0.5) * 2000;
 
         // Scattered colors (soft white/grey randomness)
-        scatteredColors[i * 3]     = 0.5 + Math.random() * 0.5;
+        scatteredColors[i * 3] = 0.5 + Math.random() * 0.5;
         scatteredColors[i * 3 + 1] = 0.5 + Math.random() * 0.5;
         scatteredColors[i * 3 + 2] = 0.5 + Math.random() * 0.5;
 
         // Initial state = scattered
-        positions[i * 3]     = scatteredPositions[i * 3];
+        positions[i * 3] = scatteredPositions[i * 3];
         positions[i * 3 + 1] = scatteredPositions[i * 3 + 1];
         positions[i * 3 + 2] = scatteredPositions[i * 3 + 2];
-        colors[i * 3]     = scatteredColors[i * 3];
+        colors[i * 3] = scatteredColors[i * 3];
         colors[i * 3 + 1] = scatteredColors[i * 3 + 1];
         colors[i * 3 + 2] = scatteredColors[i * 3 + 2];
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.PointsMaterial({
         size: 2.0,
@@ -306,36 +307,107 @@ function setupWebcam() {
         return;
     }
 
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => {
-            console.log('SUCCESS: Camera permission granted!');
-            video.style.display = 'block';
-            video.srcObject = stream;
-            video.play();
+    const uploadInput = document.getElementById('upload-video');
+    const cameraMessage = document.getElementById('camera-message');
 
-            // Make sure the canvas and socket are accessible here
-            const captureCanvas = document.createElement('canvas');
-            const captureCtx = captureCanvas.getContext('2d');
+    function startCaptureFromVideoElem(srcVideo) {
+        srcVideo.style.display = 'block';
+        srcVideo.play().catch(() => { });
 
-            setInterval(() => {
-                // Check if socket exists and is open
-                if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
-                    if (video.videoWidth > 0) {
-                        captureCanvas.width = video.videoWidth;
-                        captureCanvas.height = video.videoHeight;
-                        captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+        const localCanvas = document.createElement('canvas');
+        const localCtx = localCanvas.getContext('2d');
 
-                        const base64String = captureCanvas.toDataURL('image/jpeg', 0.5);
-                        socket.send(JSON.stringify({ image: base64String }));
-                        console.log('Frame sent to Render API');
-                    }
+        const intervalId = setInterval(() => {
+            if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                if (srcVideo.videoWidth > 0) {
+                    localCanvas.width = srcVideo.videoWidth;
+                    localCanvas.height = srcVideo.videoHeight;
+                    localCtx.drawImage(srcVideo, 0, 0, localCanvas.width, localCanvas.height);
+                    const base64String = localCanvas.toDataURL('image/jpeg', 0.5);
+                    try { socket.send(JSON.stringify({ image: base64String })); } catch (e) { /* ignore */ }
                 }
-            }, 150);
-        })
-        .catch((err) => {
-            video.style.display = 'none';
-            console.error('FATAL CAMERA ERROR: Could not access webcam.', err);
+            }
+        }, FRAME_INTERVAL_MS);
+
+        return () => clearInterval(intervalId);
+    }
+
+    // Try real camera first
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then((stream) => {
+                console.log('SUCCESS: Camera permission granted!');
+                video.srcObject = stream;
+                const stopInterval = startCaptureFromVideoElem(video);
+                // when page unloads, stop the tracks
+                window.addEventListener('beforeunload', () => {
+                    try { stream.getTracks().forEach(t => t.stop()); } catch (e) { }
+                    stopInterval();
+                });
+            })
+            .catch((err) => {
+                console.warn('Camera access failed — enabling upload fallback.', err);
+                video.style.display = 'none';
+                cameraMessage.innerText = 'Camera blocked — upload a video or image to simulate frames.';
+            });
+    } else {
+        console.warn('navigator.mediaDevices.getUserMedia not supported — enabling upload fallback.');
+        video.style.display = 'none';
+        cameraMessage.innerText = 'Camera not available — upload a video or image to simulate frames.';
+    }
+
+    // Upload fallback: user can upload a video or image to simulate the webcam
+    if (uploadInput) {
+        uploadInput.addEventListener('change', (ev) => {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+
+            const url = URL.createObjectURL(file);
+
+            // If image, draw it repeatedly; if video, play it and capture frames
+            if (file.type.startsWith('image/')) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    // draw and send at interval
+                    const tempCanvas = document.createElement('canvas');
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCanvas.width = img.width;
+                    tempCanvas.height = img.height;
+                    tempCtx.drawImage(img, 0, 0);
+                    setInterval(() => {
+                        if (typeof socket !== 'undefined' && socket.readyState === WebSocket.OPEN) {
+                            const b64 = tempCanvas.toDataURL('image/jpeg', 0.8);
+                            try { socket.send(JSON.stringify({ image: b64 })); } catch (e) { }
+                        }
+                    }, FRAME_INTERVAL_MS);
+                };
+                img.src = url;
+                cameraMessage.innerText = 'Using uploaded image as simulated camera.';
+            } else {
+                // treat as video
+                const uploadedVideo = document.createElement('video');
+                uploadedVideo.id = 'uploaded-sim';
+                uploadedVideo.muted = true;
+                uploadedVideo.src = url;
+                uploadedVideo.autoplay = true;
+                uploadedVideo.loop = true;
+                uploadedVideo.playsInline = true;
+                uploadedVideo.style.display = 'none';
+                document.body.appendChild(uploadedVideo);
+
+                uploadedVideo.addEventListener('loadeddata', () => {
+                    if (uploadedVideo.readyState >= 2) {
+                        startCaptureFromVideoElem(uploadedVideo);
+                        cameraMessage.innerText = 'Using uploaded video as simulated camera.';
+                    }
+                });
+
+                // revoke object URL when page unloads
+                window.addEventListener('beforeunload', () => URL.revokeObjectURL(url));
+            }
         });
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -344,9 +416,10 @@ function setupWebcam() {
 function setupWebSocket() {
     const hud = document.getElementById('status-hud');
     const configuredUrl = (import.meta.env.VITE_WS_URL || '').trim();
+    const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const localFallback = `${protocol}://${window.location.hostname}:8765`;
-    const wsUrl = configuredUrl || localFallback;
+    const wsUrl = configuredUrl || (isLocalHost ? localFallback : DEFAULT_REMOTE_WS_URL);
 
     ws = new WebSocket(wsUrl);
     socket = ws;
@@ -394,10 +467,10 @@ function updateTechniqueUI(gesture) {
     }
 
     const mapping = {
-        infinite_void:     { name: 'Infinite Void',     class: 'color-void' },
+        infinite_void: { name: 'Infinite Void', class: 'color-void' },
         malevolent_shrine: { name: 'Malevolent Shrine', class: 'color-shrine' },
-        hollow_purple:     { name: 'Hollow Purple',     class: 'color-purple' },
-        mahoraga:          { name: 'Mahoraga',          class: 'color-mahoraga' }
+        hollow_purple: { name: 'Hollow Purple', class: 'color-purple' },
+        mahoraga: { name: 'Mahoraga', class: 'color-mahoraga' }
     };
 
     const tech = mapping[gesture];
@@ -461,16 +534,16 @@ function assembleDomain(gesture) {
 
     // Snapshot current particle state as the "from" state for smooth transitions
     const currentPositions = new Float32Array(geometry.attributes.position.array);
-    const currentColors    = new Float32Array(geometry.attributes.color.array);
+    const currentColors = new Float32Array(geometry.attributes.color.array);
 
     // Determine target arrays
     let targetPositions, targetColors;
     if (isAssembling && formations[gesture]) {
         targetPositions = formations[gesture].positions;
-        targetColors    = formations[gesture].colors;
+        targetColors = formations[gesture].colors;
     } else {
         targetPositions = scatteredPositions;
-        targetColors    = scatteredColors;
+        targetColors = scatteredColors;
     }
 
     // Reset progress and tween

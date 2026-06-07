@@ -6,12 +6,12 @@ import asyncio
 import websockets
 import json
 from main import init_tracker, extract_landmarks
-import threading
 import os
 import signal
 import http
 from pathlib import Path
 import warnings
+import base64
 
 PROJECT_DIR = Path(__file__).resolve().parent
 os.environ.setdefault("MPLCONFIGDIR", str(PROJECT_DIR / ".mplconfig"))
@@ -23,59 +23,55 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-# Global variable to hold the latest stabilized prediction
-latest_stable_label = "neutral"
-
 # Track connected clients + shutdown logic
 connected_clients = set()
 shutdown_task = None
+model = None
 
-def process_frames():
-    global latest_stable_label
+def load_model():
+    global model
+    if model is not None:
+        return model
     try:
-        model = joblib.load('jjk_model.pkl')
+        model = joblib.load(PROJECT_DIR / "jjk_model.pkl")
+        return model
     except Exception as e:
         print("Error loading model:", e)
-        return
+        raise
 
-    # In macOS, starting Cap normally grabs the primary camera (often FaceTime / built-in)
-    cap = cv2.VideoCapture(0)
-    hands, _, mp_hands = init_tracker(include_drawing=False)
+def decode_frame(image_data):
+    if not image_data:
+        return None
 
-    if not cap.isOpened():
-        print("Error: Could not open webcam.")
-        return
+    if "," in image_data:
+        image_data = image_data.split(",", 1)[1]
 
-    print("Background MediaPipe CV process running (Headless).")
+    try:
+        image_bytes = base64.b64decode(image_data)
+    except Exception:
+        return None
 
-    prediction_buffer = deque(maxlen=5)
+    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+    frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    if frame is None:
+        return None
 
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
+    # Match the mirrored local capture path the model was trained against.
+    return cv2.flip(frame, 1)
 
-        frame = cv2.flip(frame, 1)
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb_frame.flags.writeable = False
-        results = hands.process(rgb_frame)
+def predict_gesture(frame, hands, classifier):
+    if frame is None:
+        return "neutral"
 
-        landmarks_array = extract_landmarks(results)
-        
-        current_prediction = "neutral"
-        if results.multi_hand_landmarks:
-            pred = model.predict([landmarks_array])[0]
-            current_prediction = pred
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb_frame.flags.writeable = False
+    results = hands.process(rgb_frame)
 
-        prediction_buffer.append(current_prediction)
+    if not results.multi_hand_landmarks:
+        return "neutral"
 
-        stable_label = "neutral"
-        if len(prediction_buffer) == 5 and len(set(prediction_buffer)) == 1:
-            stable_label = prediction_buffer[0]
-
-        latest_stable_label = stable_label
-
-    cap.release()
+    landmarks_array = extract_landmarks(results)
+    return classifier.predict([landmarks_array])[0]
 
 async def schedule_shutdown():
     """Wait 5 seconds, then exit if no client has reconnected."""
@@ -86,7 +82,7 @@ async def schedule_shutdown():
         os.kill(os.getpid(), signal.SIGTERM)
 
 async def handler(websocket):
-    global latest_stable_label, shutdown_task
+    global shutdown_task
     
     # Register client
     connected_clients.add(websocket)
@@ -97,26 +93,44 @@ async def handler(websocket):
         shutdown_task.cancel()
         print("   ↳ Shutdown cancelled — client reconnected.")
     
-    last_sent_label = None
+    classifier = load_model()
+    hands, _, _ = init_tracker(include_drawing=False)
+    prediction_buffer = deque(maxlen=5)
+    last_sent_label = "neutral"
+
     try:
-        while True:
-            current_label = latest_stable_label
+        await websocket.send(json.dumps({"gesture": last_sent_label}))
+
+        async for raw_message in websocket:
+            try:
+                payload = json.loads(raw_message)
+            except json.JSONDecodeError:
+                continue
+
+            frame = decode_frame(payload.get("image"))
+            current_prediction = predict_gesture(frame, hands, classifier)
+            prediction_buffer.append(current_prediction)
+
+            current_label = "neutral"
+            if len(prediction_buffer) == prediction_buffer.maxlen and len(set(prediction_buffer)) == 1:
+                current_label = prediction_buffer[0]
+
             if current_label != last_sent_label:
                 message = json.dumps({"gesture": current_label})
                 await websocket.send(message)
                 last_sent_label = current_label
                 print(f"Broadcasted -> {message}")
-                
-            await asyncio.sleep(0.05)  # 20 Hz poll
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
+        hands.close()
+
         # Unregister client
         connected_clients.discard(websocket)
         print(f"❌ Client disconnected: {websocket.remote_address} ({len(connected_clients)} active)")
         
-        # If no clients left, start shutdown countdown
-        if len(connected_clients) == 0:
+        # Local dev can shut down on tab close; hosted backends should stay warm.
+        if len(connected_clients) == 0 and "PORT" not in os.environ:
             shutdown_task = asyncio.ensure_future(schedule_shutdown())
 
 async def process_request(path, request_headers):
@@ -135,10 +149,6 @@ async def main_server():
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
-    # Start OpenCV webcam extraction in a daemon thread so it doesn't block AsyncIO
-    t = threading.Thread(target=process_frames, daemon=True)
-    t.start()
-    
     try:
         asyncio.run(main_server())
     except (KeyboardInterrupt, SystemExit):

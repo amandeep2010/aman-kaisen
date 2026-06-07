@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,12 +8,23 @@
     <link rel="stylesheet" href="./style.css">
     <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div id="webgl-container"></div>
     <div id="technique-name"></div>
     <canvas id="pixel-canvas" style="display:none;"></canvas>
     <div id="status-hud">Connecting to Python Backend API...</div>
     <video id="webcam" autoplay playsinline muted></video>
+    <div id="camera-fallback"
+        style="position:absolute; bottom:30px; left:30px; z-index:30; color:#0ff; font-family:monospace;">
+        <label for="upload-video"
+            style="cursor:pointer; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:6px; border:1px solid rgba(0,255,255,0.15);">Upload
+            video</label>
+        <input id="upload-video" type="file" accept="video/*,image/*" style="display:none">
+        <div id="camera-message" style="margin-top:8px; font-size:0.9rem; opacity:0.85;">If your browser blocks the
+            camera, upload a video or image to simulate frames.</div>
+    </div>
     <script type="module" src="./main.js"></script>
 </body>
+
 </html>

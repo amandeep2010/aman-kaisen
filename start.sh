@@ -14,6 +14,27 @@ BACKEND_PID=""
 FRONTEND_PID=""
 PYTHON_BIN="${PROJECT_DIR}/.venv/bin/python"
 
+# Auto-create Python virtualenv and install requirements if missing
+if [ ! -x "${PYTHON_BIN}" ]; then
+    echo "⚙️  Python virtualenv not found. Creating .venv and installing requirements..."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m venv .venv
+    elif command -v python >/dev/null 2>&1; then
+        python -m venv .venv
+    else
+        echo "❌ Python not found. Please install Python 3 and retry."
+        exit 1
+    fi
+
+    if [ -x "${PROJECT_DIR}/.venv/bin/pip" ]; then
+        "${PROJECT_DIR}/.venv/bin/pip" install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
+        echo "⚙️  Installing Python requirements..."
+        "${PROJECT_DIR}/.venv/bin/pip" install -r requirements.txt || echo "❗ pip install failed — please run '.venv/bin/pip install -r requirements.txt'"
+    else
+        echo "❌ pip not available in the created venv. Create a venv manually and install requirements.txt"
+    fi
+fi
+
 kill_process_tree() {
     local pid="$1"
     local children
@@ -86,9 +107,24 @@ sleep 2
 echo ""
 echo "🌐 Starting Vite frontend (http://localhost:${FRONTEND_PORT})..."
 cd "$PROJECT_DIR/frontend"
-./node_modules/.bin/vite &
-FRONTEND_PID=$!
-echo "   Frontend PID: $FRONTEND_PID"
+# If dependencies aren't installed, do so automatically (if npm is available)
+if [ ! -d "node_modules" ]; then
+    echo "⚙️  Frontend dependencies not found. Running 'npm install'..."
+    if command -v npm >/dev/null 2>&1; then
+        npm install || echo "❗ npm install failed — please run 'npm install' inside ./frontend and retry"
+    else
+        echo "❌ npm not found. Install Node.js/npm or run 'npm install' in ./frontend"
+    fi
+fi
+
+if [ -x "./node_modules/.bin/vite" ]; then
+    ./node_modules/.bin/vite &
+    FRONTEND_PID=$!
+    echo "   Frontend PID: $FRONTEND_PID"
+else
+    echo "❗ Vite executable not found. Start the frontend manually with: (cd frontend && npm run dev)"
+    FRONTEND_PID=""
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
